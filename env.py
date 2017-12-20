@@ -11,22 +11,24 @@ import time
 def health_percent(img):
     max_y=0
     cnt = 0
+    health_img = np.load('health_img.npy').astype(int)
     for y in range(0,320,5):
         point = img[4,y]
-        if point[0] > 80:
-            max_y = y
+        if np.all(img[4,y]>=health_img[4,y]-10) and np.all(img[4,y]<=health_img[4,y]+10):
+           max_y = y
+            
     return max_y/320.0
 
 def boss_health_percent(img):
     max_y=0
     cnt=0
+    boss_img = np.load('boss_img.npy').astype(int)
     for y in range(0, 418, 5):
         point = img[4,y]
-        if point[0] >= 50 and point[0] <=75:
-            if point[1] >= 30 and point[1] <=40:
-                if point[2] >= 20 and point[2] <= 30:
-                    max_y=y
-
+        if np.all(img[4,y] >= boss_img[4,y] - 10) and np.all(img[4,y] <= boss_img[4,y] + 10):
+            max_y=y
+        else:
+            break
 
 
     return max_y/float(418.0)
@@ -35,11 +37,14 @@ def boss_health_percent(img):
 def stamina_percent(img):
     max_y=0
     cnt = 0
-    for y in range(0,185,5):
+    stamina_img = np.load('stamina_img.npy').astype(int)
+    for y in range(0,184,5):
         point = img[4,y]
-        if point[1] > 70:
-                max_y=y
-    return max_y/180.0
+        if np.all(img[4,y] >= stamina_img[4,y]-10) and np.all(img[4,y] <= stamina_img[4,y]+10):
+            max_y=y
+        else:
+            break
+    return max_y/184.0
 
 def get_boss_health_value(sct):
     img = np.asarray(get_boss_health(sct=sct))
@@ -53,6 +58,32 @@ def get_stamina_value(sct):
     img = np.asarray(get_stamina(sct=sct))
     return stamina_percent(img)
 
+def get_estus_left_value(sct):
+    img = np.asarray(get_estus_left(sct=sct))
+    estus0=np.load('estus_0.npy')
+    estus1=np.load('estus_1.npy')
+    estus2=np.load('estus_2.npy')
+    estus3=np.load('estus_3.npy')
+    estus4=np.load('estus_4.npy')
+    estus5=np.load('estus_5.npy')
+    current_estus = (np.sum(img,axis=2)>400).astype(int)
+    if np.sum((current_estus != estus5).astype(int))<3:
+        return 5
+
+    elif np.sum((current_estus != estus4).astype(int))<3:
+        return 4
+
+    elif np.sum((current_estus != estus3).astype(int))<3:
+        return 3
+
+    elif np.sum((current_estus != estus2).astype(int))<3:
+        return 2
+
+    elif np.sum((current_estus != estus1).astype(int))<3:
+        return 1
+    else:
+        return 0
+
 
 
 class DarkSoulsEnv():
@@ -61,6 +92,9 @@ class DarkSoulsEnv():
         self.sct = sct
         self.m = m
         self.k = k
+        self.prev_hp = 1.0
+        self.prev_boss_hp = 1.0
+
 
     def init_env(self):
         back.focus_window(self.m)
@@ -78,8 +112,7 @@ class DarkSoulsEnv():
     def status(self):
         screen = np.asarray(get_screen(sct=self.sct))
 
-        estus_info = np.mean(screen[450:460, 140:150], axis=(0, 1))
-
+        estus_left = get_estus_left_value(sct=self.sct)
 
         #screen = screen / 255.0
         #screen = screen - 0.5
@@ -90,10 +123,6 @@ class DarkSoulsEnv():
         boss_hp = get_boss_health_value(sct=self.sct)
         if hp == 0 and boss_hp == 0:
             boss_hp = self.prev_boss_hp
-        if estus_info[0]>200:
-            estus_left = 1.0
-        else:
-            estus_left = 0.0
         
         boss_hp_diff = self.prev_boss_hp - boss_hp
         hp_diff = self.prev_hp - hp
@@ -103,7 +132,15 @@ class DarkSoulsEnv():
         #    reward = -1.0
         #elif boss_hp <0.001:
         #    reward = 1.0
-        reward = boss_hp_diff - hp_diff
+        reward = boss_hp_diff * 10.0
+        if hp<=0.01:
+            reward = reward - 10.0
+            if boss_hp <= 0.01:
+                reward += 10.0
+                boss_hp = -1.0
+        if boss_hp<= 0.01 and boss_hp_diff < 0.11 and boss_hp_diff >0.01:
+            boss_hp = -1.0
+        
         return screen, hp, sp, boss_hp, estus_left, reward
 
    

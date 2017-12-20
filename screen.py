@@ -43,4 +43,9 @@ def get_boss_health(sct):
     return img
 
 
+def get_estus_left(sct):
+    sct_img = sct.grab({'height':12,'left':254,'top':523,'width':10})
+    img = Image.frombytes('RGBA', sct_img.size, bytes(sct_img.raw), 'raw', 'BGRA')
+    img = img.convert('RGB')  # Convert to RGB
 
+    return img

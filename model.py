@@ -2,74 +2,109 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-def conv3x3(in_planes, out_planes, stride=1):
-    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,padding=1,bias=False)
+import torchvision.models as models
+
+
+import base_model
+
+
+
+class Policy(nn.Module):
+
+    def __init__(self):
+        super(Policy, self).__init__()
+        self.saved_actions = []
+        self.rewards = []
+
+class CNN(nn.Module):
+    def __init__(self, target1, target2):
+        super(CNN, self).__init__()
+
+        self.screen_feature_num = 256
+        self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=2)
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=2)
+        self.conv3 = nn.Conv2d(32, 64, kernel_size=3, stride=2)
+        self.conv4 = nn.Conv2d(64, 128, kernel_size=3, stride=2)
+        self.conv5 = nn.Conv2d(128, 256, kernel_size=3, stride=2)
+        self.conv6 = nn.Conv2d(256, 512, kernel_size=3, stride=2)
+
+        self.fc1 = nn.Linear(5120, self.screen_feature_num)
+
+
+        self.head1 = nn.Linear(self.screen_feature_num, target1)
+        self.head2 = nn.Linear(self.screen_feature_num, target2)
+
+        
+    def forward(self, screen ):
+        screen = F.avg_pool2d(screen, (2,2))
+        features = F.relu(self.conv1(screen))
+        features = F.relu(self.conv2(features))
+        features = F.relu(self.conv3(features))
+        features = F.relu(self.conv4(features))
+        features = F.relu(self.conv5(features))
+        features = F.relu(self.conv6(features))
+        
+        features = features.view(features.size(0),-1)
+        features = F.relu(self.fc1(features))
+
+        pred = self.head1(features), self.head2(features)
+
+        return pred, features 
+
 
 
 class DQN(nn.Module):
-    def __init__(self, action=12):
+    def __init__(self, action, variables, pretrained=None):
         super(DQN, self).__init__()
+        self.model = CNN(10, 10)
+        self.variables = variables
+        if pretrained is not None:
+            checkpoint = torch.load(pretrained)
+            self.model.load_state_dict(checkpoint['state_dict'])
+        in_features = self.model.screen_feature_num
+        self.value_head = nn.Linear(in_features + self.variables, action)
 
-        self.conv_init = nn.Conv2d(3, 16, kernel_size=5,stride=1,padding=2,bias=False)
-        self.pool0 = torch.nn.MaxPool2d(kernel_size = 4)
-        self.conv1 = conv3x3(16,16)
-        self.conv2 = conv3x3(16,16)
-        self.bn1 = nn.BatchNorm2d(16)
-        self.pool1 = torch.nn.MaxPool2d(kernel_size = 2)
-
-        self.conv3 = conv3x3(16,32)
-        self.conv4 = conv3x3(32,32)
-        self.bn1 = nn.BatchNorm2d(32)
-        self.pool2 = torch.nn.MaxPool2d(kernel_size = 2)
-
-        self.conv5 = conv3x3(32,64)
-        self.conv6 = conv3x3(64,64)
-        self.bn1 = nn.BatchNorm2d(64)
-        self.pool3 = torch.nn.MaxPool2d(kernel_size = 2)
-
-        self.conv7 = conv3x3(64,128)
-        self.conv8 = conv3x3(128,128)
-        self.bn1 = nn.BatchNorm2d(128)
-        self.pool4 = torch.nn.MaxPool2d(kernel_size = 2)
-        self.conv9 = conv3x3(128,256)
-        self.conv10 = conv3x3(256,256)
-        self.bn1 = nn.BatchNorm2d(256)
-        self.head = nn.Linear(256, action)
+    def forward(self, screen, variables):
+        pred, feature = self.model(screen)
+        feature = torch.cat((feature, variables), 1)
+        action_values = self.value_head(feature)
         
-    def forward(self, screen):
-        x = self.pool0(screen)
+        return action_values
 
-        x = F.relu(self.conv_init(x))
-
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = self.pool1(x)
-
-
-        x = F.relu(self.conv3(x))
-        x = F.relu(self.conv4(x))
-        x = self.pool2(x)
-
-
-        x = F.relu(self.conv5(x))
-        x = F.relu(self.conv6(x))
-        x = self.pool3(x)
-
-
-        x = F.relu(self.conv7(x))
-        x = F.relu(self.conv8(x))
-        x = self.pool4(x)
-
-        x = F.relu(self.conv9(x))
-        x = F.relu(self.conv10(x))
-
-        x = F.avg_pool2d(x, kernel_size = x.size()[2:])
-        x = x.view(x.size(0), -1)
-        x = self.head(x)
-        return x
+    def parameters(self):
+        for p in self.model.parameters():
+            if p.requires_grad:
+                yield p
 
 
 
+
+class PolicyCNN(Policy):
+    def __init__(self, action, variables, pretrained=None):
+        super(PolicyCNN, self).__init__()
+        self.model = CNN(target1=10, target2=10)
+        if pretrained is not None:
+            checkpoint = torch.load(pretrained)
+            self.model.load_state_dict(checkpoint['state_dict'])
+
+        in_features = self.model.screen_feature_num
+
+        self.action_head = nn.Linear(in_features + variables, action)
+        self.value_head = nn.Linear(in_features + variables, 1)
+        self.softmax = nn.Softmax()
+
+    def forward(self, screen, variables):
+        pred, feature = self.model(screen)
+        feature = torch.cat((feature, variables), 1)
+        action_score = self.action_head(feature)
+        state_values = self.value_head(feature)
+        
+        return self.softmax(action_score), state_values
+
+    def parameters(self):
+        for p in self.model.parameters():
+            if p.requires_grad:
+                yield p
 
 
 
