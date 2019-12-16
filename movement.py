@@ -1,43 +1,49 @@
-import back
+def move_forward(c, sec=1.0):
+    c.press_sec(keys=['w'], sec=sec)
 
-def move_forward(k, sec=1.0):
-    back.press_sec(k, keys=['w'], sec=sec)
+def move_backward(c, sec=1.0):
+    c.press_sec(keys=['s'], sec=sec)
 
-def move_backward(k, sec=1.0):
-    back.press_sec(k, keys=['s'], sec=sec)
+def move_left(c, sec=1.0):
+    c.press_sec(keys=['a'], sec=sec)
 
-def move_left(k, sec=1.0):
-    back.press_sec(k, keys=['a'], sec=sec)
+def move_right(c, sec=1.0):
+    c.press_sec(keys=['d'], sec=sec)
 
-def move_right(k, sec=1.0):
-    back.press_sec(k, keys=['d'], sec=sec)
+def run_backward(c, sec=1.0):
+    c.press_sec(keys=[' ','s'], sec=sec)
 
-def focus(k):
-    back.press_sec(k, keys=['o'], sec=0.2)
+def focus(c):
+    c.press_sec(keys=['q'], sec=0.1)
 
-def idle(k):
-    back.press_sec(k, keys=['x'], sec=0.0, delay=0.3)
+def idle(c):
+    c.press_sec(keys=['x'], sec=0.0, delay=0.1)
 
-def light_atk(k):
-    back.press_sec(k, keys=['h'], sec=0.2, delay=0.5)
+def light_atk(c,delay=0.5):
+    c.press_sec(keys=['u'], sec=0.1, delay=delay)
 
-def heavy_atk(k):
-    back.press_sec(k, keys=['u'], sec=0.2, delay=1.8)
+def heavy_atk(c,delay=0.5):
+    c.press_sec(keys=['u'], sec=0.1, delay=delay)
 
-def f_roll(k, sec=0.2):
-    back.press_sec(k, keys=['w',' '], sec=1.0)
+def f_roll(c, sec=0.2):
+    c.press_sec(keys=['w',' '], sec=sec)
 
-def b_roll(k, sec=0.2):
-    back.press_sec(k, keys=['s',' '], sec=1.0)
+def b_roll(c, sec=0.2):
+    c.press_sec(keys=['s',' '], sec=sec)
 
-def l_roll(k, sec=0.2):
-    back.press_sec(k, keys=['a',' '], sec=1.0)
+def l_roll(c, sec=0.2):
+    c.press_sec(keys=['a',' '], sec=sec)
 
-def r_roll(k, sec=0.2):
-    back.press_sec(k, keys=['d',' '], sec=1.0)
+def r_roll(c, sec=0.2):
+    c.press_sec(keys=['d',' '], sec=sec)
 
-def drink_estus(k, sec=0.2):
-    back.press_sec(k, keys=['e'], sec=2.7)
+def drink_estus(c, sec=0.2):
+    c.press_sec(keys=['r'], sec=0.1,delay=3.0)
+
+if __name__ == '__main__':
+    from back import ConsoleInput
+    c = ConsoleInput()
+    move_forward(c)
 
 
 
