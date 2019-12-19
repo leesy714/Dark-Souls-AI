@@ -39,6 +39,8 @@ def exit_and_reload(c, focus=False):
         c.mouse_click(960,540)
         time.sleep(0.5)
     #exit
+    c.press_sec(['q'],0.2)
+    time.sleep(0.6)
     c.press_sec([c.k.escape_key],0.3)
 
     c.press_sec([c.k.right_key],0.5)
@@ -76,10 +78,10 @@ def move_to_init_position(c, focus=False):
         c.mouse_click(960,540)
         time.sleep(0.1)
     c.press_sec('q',0.2)
-    c.press_sec('w',4.0)
+    c.press_sec('w',3.0)
     c.press_sec('e',0.3)
     time.sleep(3)
-    c.press_sec('w',4.0)
+    c.press_sec('w',4.5)
     c.press_sec('q',0.1)
     return
 

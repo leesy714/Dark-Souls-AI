@@ -1,23 +1,26 @@
 import numpy as np
+import time
 import back
 import movement
 import gym
 
 from back import ConsoleInput
-from screen import ScreenControl
+from screen import ScreenControl,AsyncFrameStackScreenControl
 
 class DarkSoulEnv(object):
     def __init__(self, action_set=None):
-        self.s = ScreenControl()
+        self.s = AsyncFrameStackScreenControl()
         self.c = ConsoleInput()
         self.ready=False
         if action_set is None:
             self.action_set=[
-                'light_atk','b_roll','f_roll','l_roll','r_roll','drink_estus','idle']
+                'light_atk','b_roll','f_roll','l_roll','r_roll','move_forward','move_backward','move_left','move_right','drink_estus','idle_']
+                #'light_atk','b_roll','f_roll','l_roll','r_roll','move_backward','drink_estus','idle_']
         else:
             self.action_set = action_set
         self.action_space = gym.spaces.Discrete(len(self.action_set))
-        self.obs_space = (1080,1920,3)
+        self.observation_space = gym.spaces.Box(0,1.0,self.s.shape)
+        self.s.start()
 
 
 
@@ -41,80 +44,27 @@ class DarkSoulEnv(object):
         hp,sp = self.s.get_hp_sp()
         boss_hp = self.s.get_boss_hp()
 
-        if hp < 0.001 or boss_hp < 0.001:
+        if hp < 0.0001 or boss_hp < 0.0001:
             done=True
         else:
             done=False
         reward = (hp - self.previous[0]) + (self.previous[1] - boss_hp)
+        #reward=0.0
+        #if hp-self.previous[0]>0.01:
+        #    reward = 0.1
+        #if self.previous[0]-hp>0.01:
+        #    reward = -0.1
+        #if hp<0.0001:
+        #    reward -= 1.0
+        #if np.abs(self.previous[0] - hp)>0.01:
+        #    reward = hp - self.previous[0]
+        #if np.abs(self.previous[1] - boss_hp)>0.01:
+        #    reward += 0.1
         if np.abs(reward)<0.001:
             reward=0
         self.previous = (hp,boss_hp)
+        info = {'hp':hp, 'boss_hp':boss_hp, 'sp':sp,'estus':self.estus}
 
-        return (img, hp, sp, boss_hp, self.estus), reward, done, None
-
-class GrayscaleEnv(object):
-    def __init__(self, env):
-        self.env = env
-        self.action_space = self.env.action_space
-        self.action_set = self.env.action_set
-        self.obs_space = (1080,1920)
-
-    def reset(self):
-        img = self.env.reset()
-        img = np.mean(img, axis=2)
-        return img
-
-    def step(self, action):
-        (img, hp, sp, boss_hp, estus), reward, done, info = self.env.step(action)
-        img = np.mean(img, axis=2)
-        return (img, hp, sp, boss_hp, estus), reward, done, info
-
-class CropPoolEnv(object):
-    def __init__(self, env, crop=210, pool=4):
-        self.env = env
-        self.action_space = self.env.action_space
-        self.action_set = self.env.action_set
-        self.pool = pool
-        self.crop = crop
-        self.obs_space = (1080//pool,(1980-2*crop)//pool)
-
-    def reset(self):
-        img = self.env.reset()
-        img = img[::self.pool,self.crop:-self.crop:self.pool]
-        return img
-
-    def step(self, action):
-        (img, hp, sp, boss_hp, estus), reward, done, info = self.env.step(action)
-        img = img[::self.pool,self.crop:-self.crop:self.pool]
-        return (img, hp, sp, boss_hp, estus), reward, done, info
-
-
-
-class FrameStackEnv(object):
-    def __init__(self, env, frame=4):
-        self.env = env
-        self.action_space = self.env.action_space
-        self.action_set = self.env.action_set
-        self.obs_space = (frame,self.env.obs_space[0],self.env.obs_space[1])
-        self.frame = frame
-        self.img_list = []
-
-    def reset(self):
-        img = self.env.reset()
-        self.img_list=[]
-        self.img_list.append(img)
-        idle = self.env.action_set.index('idle')
-        for _ in range(1, self.frame):
-            (img, hp, sp, boss_hp, estus), reward, done, info = self.env.step(idle)
-            self.img_list.append(img)
-
-        return np.array(self.img_list)
-
-    def step(self, action):
-        (img, hp, sp, boss_hp, estus), reward, done, info = self.env.step(action)
-        self.img_list.append(img)
-        self.img_list = self.img_list[1:]
-        return (np.array(self.img_list), hp, sp, boss_hp, estus), reward, done, info
-
-
+        #return (img, hp, sp, boss_hp, self.estus), reward 10, done, None
+        return img, reward * 10, done, info
 

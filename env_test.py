@@ -33,7 +33,6 @@ for ep in range(10000):
         if previous_state is not None:
             buffer.append([previous_state,action,reward,state,done])
         if done:
-            time.sleep(20)
             break
     if len(buffer)==0:
         continue
