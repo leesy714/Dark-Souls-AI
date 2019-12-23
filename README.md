@@ -1,15 +1,7 @@
 # Dark-Souls-AI
 
-AI for Dark Souls.
+AI for Dark Souls III.
 
-Network Architecture : 16 32 64 128 256 512 3x3 convolution layers + 256 fully connected hidden layer + softmax
+Nothing here in master branch.
+Check rainbow branch.
 
-Learning : Deep Q Network(with experience replay)
-
-Environment optimized for vs the asylum demon.
-
-Dark Souls game must be running on windowed mode at a certain location.
-
-Proper save data is needed for restore initial position.
-
-[Watch the video that beats the demon](https://www.youtube.com/watch?v=y25vipEv9uM)
