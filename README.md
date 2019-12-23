@@ -30,3 +30,4 @@ Need to change some key maps for a proper run.
 
 Proper save data is needed in data dir to restore initial position.
 
+Check my twitch channel for progression <https://www.twitch.tv/acadclinton>
