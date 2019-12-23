@@ -57,44 +57,45 @@ class DQNBase(nn.Module):
             self.Linear = nn.Linear
 
         self.flatten = Flatten()
-        #init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
-        #                       constant_(x, 0), nn.init.calculate_gain('relu'))
+        init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
+                               constant_(x, 0), nn.init.calculate_gain('relu'))
 
         pool1 = ((self.input_shape[1]-7)//4-4)//2-2-2
         pool2 = ((self.input_shape[2]-7)//4-4)//2-2-2
         self.features = nn.Sequential(
-            #init_(nn.Conv2d(self.input_shape[0], 32, kernel_size=8, stride=4)),
-            nn.Conv2d(self.input_shape[0], 32, kernel_size=8, stride=4),
+            init_(nn.Conv2d(self.input_shape[0], 32, kernel_size=8, stride=4)),
+            #nn.Conv2d(self.input_shape[0], 32, kernel_size=8, stride=4),
             nn.ReLU(),
-            #init_(nn.Conv2d(32, 64, kernel_size=5, stride=2)),
-            nn.Conv2d(32, 64, kernel_size=5, stride=2),
+            init_(nn.Conv2d(32, 64, kernel_size=5, stride=2)),
+            #nn.Conv2d(32, 64, kernel_size=5, stride=2),
             nn.ReLU(),
-            #init_(nn.Conv2d(64, 128, kernel_size=3, stride=1)),
-            nn.Conv2d(64, 128, kernel_size=3, stride=1),
+            init_(nn.Conv2d(64, 128, kernel_size=3, stride=1)),
+            #nn.Conv2d(64, 128, kernel_size=3, stride=1),
             nn.ReLU(),
-            #init_(nn.Conv2d(128, 256, kernel_size=3, stride=1)),
-            nn.Conv2d(128, 256, kernel_size=3, stride=1),
+            init_(nn.Conv2d(128, 256, kernel_size=3, stride=1)),
+            #nn.Conv2d(128, 256, kernel_size=3, stride=1),
             nn.ReLU(),
             nn.AvgPool2d(pool1, pool2),
         )
 
         self.fc = nn.Sequential(
-            self.Linear(256, 512),
+            self.Linear(259, 512),
             nn.ReLU(),
             self.Linear(512, self.num_actions)
         )
 
 
-    def forward(self, x):
+    def forward(self, x, infos):
         x = self.features(x)
         x = self.flatten(x)
+        x = torch.cat([x, infos], axis=1)
         x = self.fc(x)
         return x
 
     def _feature_size(self):
         return self.features(torch.zeros(1, *self.input_shape)).view(1, -1).size(1)
 
-    def act(self, state, epsilon):
+    def act(self, state, infos, epsilon):
         """
         Parameters
         ----------
@@ -104,7 +105,8 @@ class DQNBase(nn.Module):
         if random.random() > epsilon or self.noisy:  # NoisyNet does not use e-greedy
             with torch.no_grad():
                 state   = state.unsqueeze(0)
-                q_value = self.forward(state)
+                infos = infos.unsqueeze(0)
+                q_value = self.forward(state, infos)
                 action  = q_value.max(1)[1].item()
         else:
             print("Random Action")
@@ -135,15 +137,16 @@ class DuelingDQN(DQNBase):
         self.advantage = self.fc
 
         self.value = nn.Sequential(
-            self.Linear(256, 512),
+            self.Linear(259, 512),
             nn.ReLU(),
             self.Linear(512, 1)
 
         )
 
-    def forward(self, x ):
+    def forward(self, x, infos):
         x = self.features(x)
         x = self.flatten(x)
+        x = torch.cat([x, infos], axis=1)
         advantage = self.advantage(x)
         value = self.value(x)
         return value + advantage - advantage.mean(1, keepdim=True)
@@ -167,22 +170,23 @@ class CategoricalDQN(DQNBase):
         self.num_atoms = num_atoms
 
         self.fc = nn.Sequential(
-            self.Linear(256, 512),
+            self.Linear(259, 512),
             nn.ReLU(),
             self.Linear(512, self.num_actions * self.num_atoms),
         )
 
         self.softmax = nn.Softmax(dim=1)
 
-    def forward(self, x):
+    def forward(self, x, infos):
         x = self.features(x)
         x = self.flatten(x)
+        x = torch.cat([x, infos], axis=1)
         x = self.fc(x)
         x = self.softmax(x.view(-1, self.num_atoms))
         x = x.view(-1, self.num_actions, self.num_atoms)
         return x
 
-    def act(self, state, epsilon):
+    def act(self, state, infos, epsilon):
         """
         Parameters
         ----------
@@ -192,7 +196,8 @@ class CategoricalDQN(DQNBase):
         if random.random() > epsilon or self.noisy:  # NoisyNet does not use e-greedy
             with torch.no_grad():
                 state   = state.unsqueeze(0)
-                q_dist = self.forward(state)
+                infos = infos.unsqueeze(0)
+                q_dist = self.forward(state, infos)
                 q_value = (q_dist * self.support).sum(2)
                 action  = q_value.max(1)[1].item()
         else:
@@ -209,14 +214,15 @@ class CategoricalDuelingDQN(CategoricalDQN):
         self.advantage = self.fc
 
         self.value = nn.Sequential(
-            self.Linear(256, 512),
+            self.Linear(259, 512),
             nn.ReLU(),
             self.Linear(512, num_atoms)
         )
 
-    def forward(self, x ):
+    def forward(self, x, infos ):
         x = self.features(x)
         x = self.flatten(x)
+        x = torch.cat([x, infos], axis=1)
 
         advantage = self.advantage(x).view(-1, self.num_actions, self.num_atoms)
         value = self.value(x).view(-1, 1, self.num_atoms)

@@ -32,6 +32,7 @@ def restore_save_file():
     import os
     cmd = 'cp -f ./data/DS30000.sl2 /home/leesy714/.local/share/Steam/steamapps/compatdata/374320/pfx/drive_c/users/steamuser/Application\ Data/DarkSoulsIII/0110000102de41c4/'
     os.system(cmd)
+    time.sleep(5)
 
 def exit_and_reload(c, focus=False):
     #focus

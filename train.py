@@ -36,6 +36,7 @@ def train(env, args, writer):
     state_deque = deque(maxlen=args.multi_step)
     reward_deque = deque(maxlen=args.multi_step)
     action_deque = deque(maxlen=args.multi_step)
+    infos_deque = deque(maxlen=args.multi_step)
 
     optimizer = optim.Adam(current_model.parameters(), lr=args.lr)
 
@@ -46,7 +47,8 @@ def train(env, args, writer):
     prev_time = time.time()
     prev_frame = 1
 
-    state = env.reset()
+    state, info = env.reset()
+    infos = np.array([info['hp'], info['sp'], info['boss_hp']])
     actions = []
     q_values = []
     buffer_save_idx = 0
@@ -60,22 +62,28 @@ def train(env, args, writer):
             target_model.sample_noise()
 
         epsilon = epsilon_by_frame(frame_idx)
-        action, q_value = current_model.act(torch.FloatTensor(state).to(args.device), epsilon)
+        action, q_value = current_model.act(
+            torch.FloatTensor(state).to(args.device),
+            torch.FloatTensor(infos).to(args.device),
+            epsilon)
         actions.append(action)
         q_values.append(q_value)
 
         next_state, reward, done, info = env.step(action)
         print('Frame {}\t| Replay {}\t| action {} {}\t| reward {:.2f}\t| hp {:.2f} \t| boss {:.2f}'.format(
             frame_idx, len(replay_buffer), action, env.action_set[action][:max(6,len(env.action_set[action]))], reward, info['hp']*100, info['boss_hp']*100))
+        infos = np.array([info['hp'], info['sp'], info['boss_hp']])
         state_deque.append(state)
         reward_deque.append(reward)
         action_deque.append(action)
+        infos_deque.append(infos)
 
         if len(state_deque) == args.multi_step or done:
             n_reward = multi_step_reward(reward_deque, args.gamma)
             n_state = state_deque[0]
             n_action = action_deque[0]
-            replay_buffer.push(n_state, n_action, n_reward, next_state, np.float32(done))
+            n_infos = infos_deque[0]
+            replay_buffer.push(n_state, n_infos, n_action, n_reward, next_state, infos, np.float32(done))
 
         state = next_state
         episode_reward += reward
@@ -91,8 +99,8 @@ def train(env, args, writer):
                 if len(actions)>100:
                     actions = actions[-100:]
                 writer.add_histogram('hist/action', actions, frame_idx)
-                hist, _ = np.histogram(actions, bins = env.action_space.n, density=True)
-                print(hist)
+                hist, _ = np.histogram(actions, bins = env.action_space.n)
+                print(list(hist))
 
             q_value = np.array(q_values)
             writer.add_histogram('hist/q_value', q_value, frame_idx)
@@ -105,11 +113,13 @@ def train(env, args, writer):
             state_deque.clear()
             reward_deque.clear()
             action_deque.clear()
-            if buffer_save_idx > args.buffer_save_interval:
+            infos_deque.clear()
+            if buffer_save_idx > args.buffer_save_interval and args.save_replay is not None:
                 print('Save Buffer')
                 if args.save_replay is not None:
                     with open(args.save_replay,'wb') as w:
                         pickle.dump(replay_buffer, w)
+                print('Save Buffer Done')
                 buffer_save_idx = 0
 
 
@@ -146,18 +156,21 @@ def train(env, args, writer):
             save_model(current_model, args)
         if done:
             start = time.time()
+            train_cnt = 0
             while time.time()-start <30:
                 if args.train_during_reset:
-                    if len(replay_buffer) > args.learning_start:
+                    if len(replay_buffer) > args.learning_start and train_cnt < 30:
                         beta = beta_by_frame(frame_idx)
                         loss = compute_td_loss(current_model, target_model, replay_buffer, optimizer, args, beta)
                         loss_list.append(loss.item())
+                        train_cnt+=1
                 #writer.add_scalar("data/loss", loss.item(), frame_idx)
             if args.train_during_reset:
-                print('Train replay for 30 sec')
+                print('Train replay {} '.format(train_cnt))
             else:
                 print('Idle for 30 sec')
-            state = env.reset()
+            state, info = env.reset()
+            infos = np.array([info['hp'], info['sp'], info['boss_hp']])
 
     save_model(current_model, args)
 
@@ -167,26 +180,28 @@ def compute_td_loss(current_model, target_model, replay_buffer, optimizer, args,
     Calculate loss and optimize for non-c51 algorithm
     """
     if args.prioritized_replay:
-        state, action, reward, next_state, done, weights, indices = replay_buffer.sample(args.batch_size, beta)
+        state, infos, action, reward, next_state, next_infos, done, weights, indices = replay_buffer.sample(args.batch_size, beta)
     else:
-        state, action, reward, next_state, done = replay_buffer.sample(args.batch_size)
+        state, infos, action, reward, next_state, next_infos, done = replay_buffer.sample(args.batch_size)
         weights = torch.ones(args.batch_size)
 
     state = torch.FloatTensor(np.float32(state)).to(args.device)
+    infos = torch.FloatTensor(np.float32(infos)).to(args.device)
     next_state = torch.FloatTensor(np.float32(next_state)).to(args.device)
+    next_infos = torch.FloatTensor(np.float32(next_infos)).to(args.device)
     action = torch.LongTensor(action).to(args.device)
     reward = torch.FloatTensor(reward).to(args.device)
     done = torch.FloatTensor(done).to(args.device)
     weights = torch.FloatTensor(weights).to(args.device)
 
     if not args.c51:
-        q_values = current_model(state)
-        target_next_q_values = target_model(next_state)
+        q_values = current_model(state, infos)
+        target_next_q_values = target_model(next_state, next_infos)
 
         q_value = q_values.gather(1, action.unsqueeze(1)).squeeze(1)
 
         if args.double:
-            next_q_values = current_model(next_state)
+            next_q_values = current_model(next_state, next_infos)
             next_actions = next_q_values.max(1)[1].unsqueeze(1)
             next_q_value = target_next_q_values.gather(1, next_actions).squeeze(1)
         else:
@@ -200,12 +215,12 @@ def compute_td_loss(current_model, target_model, replay_buffer, optimizer, args,
         loss = (loss * weights).mean()
 
     else:
-        q_dist = current_model(state)
+        q_dist = current_model(state, infos)
         action = action.unsqueeze(1).unsqueeze(1).expand(args.batch_size, 1, args.num_atoms)
         q_dist = q_dist.gather(1, action).squeeze(1)
         q_dist.data.clamp_(0.01, 0.99)
 
-        target_dist = projection_distribution(current_model, target_model, next_state, reward, done,
+        target_dist = projection_distribution(current_model, target_model, next_state, next_infos, reward, done,
                                               target_model.support, target_model.offset, args)
 
         loss = - (target_dist * q_dist.log()).sum(1)
@@ -222,13 +237,13 @@ def compute_td_loss(current_model, target_model, replay_buffer, optimizer, args,
     return loss
 
 
-def projection_distribution(current_model, target_model, next_state, reward, done, support, offset, args):
+def projection_distribution(current_model, target_model, next_state, next_infos, reward, done, support, offset, args):
     delta_z = float(args.Vmax - args.Vmin) / (args.num_atoms - 1)
 
-    target_next_q_dist = target_model(next_state)
+    target_next_q_dist = target_model(next_state, next_infos)
 
     if args.double:
-        next_q_dist = current_model(next_state)
+        next_q_dist = current_model(next_state, next_infos)
         next_action = (next_q_dist * support).sum(2).max(1)[1]
     else:
         next_action = (target_next_q_dist * support).sum(2).max(1)[1]
